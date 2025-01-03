@@ -1,0 +1,116 @@
+Physical disk in Foreign state
+
+```
+root@testing:~# omreport storage pdisk controller=0 pdisk=0:1:5
+Physical Disk 0:1:5 on Controller PERC H755 Front (Embedded)
+
+Controller PERC H755 Front (Embedded)
+ID                              : 0:1:5
+Status                          : Non-Critical
+Name                            : Physical Disk 0:1:5
+State                           : Foreign
+Power Status                    : Not Applicable
+Bus Protocol                    : SATA
+Media                           : SSD
+Part of Cache Pool              : Not Applicable
+Remaining Rated Write Endurance : 100%
+Failure Predicted               : No
+Revision                        : XCV1DL69
+Driver Version                  : Not Applicable
+Model Number                    : Not Applicable
+T10 PI Capable                  : No
+Certified                       : Yes
+Encryption Capable              : No
+Encryption Protocol             : Not Applicable
+Encrypted                       : Not Applicable
+Progress                        : Not Applicable
+Mirror Set ID                   : Not Applicable
+Capacity                        : 1,787.88 GiB (1919716163584 bytes)
+Used RAID Disk Space            : 0.00 GiB (0 bytes)
+Available RAID Disk Space       : 1,787.88 GiB (1919716163584 bytes)
+Hot Spare                       : No
+Vendor ID                       : DELL(tm)
+Product ID                      : SSDSC2KG019T8R
+Serial No.                      : PHYG216601GR1P9DGN
+Part Number                     : TW055J8HPIHIT24R04KZA04
+Negotiated Speed                : 6.00 Gbps
+Capable Speed                   : 6.00 Gbps
+PCIe Negotiated Link Width      : Not Applicable
+PCIe Maximum Link Width         : Not Applicable
+Logical Block size              : 512B
+Device Write Cache              : Not Applicable
+Manufacture Day                 : Not Available
+Manufacture Week                : Not Available
+Manufacture Year                : Not Available
+SAS Address                     : 0x500056B3A4002FC5
+WWN                             : 0x500056B3A4002FC5
+Non-RAID HDD Disk Cache Policy  : Not Applicable
+Disk Cache Policy               : Not Applicable
+Sub Vendor                      : Not Available
+Cryptographic Erase Capable     : Yes
+```
+
+-> State     : Foreign
+I can not create vdisk with this "foreign state" disk
+
+
+To clear the foreign configuration:
+
+
+- In the iDRAC web interface, go to Overview > Storage > Controllers > Setup . The Setup Controllers page is displayed.
+- In the Foreign Configuration section, from the Controller drop-down menu, select the controller for which you want to clear the foreign configuration.
+- From the Apply Operation Mode drop-down menu, select when you want to clear the data.
+Click Clear. Based on the selected operation mode, the virtual disks residing on the physical disk is erased.
+
+
+
+```
+root@testing:~# omreport storage pdisk controller=0 pdisk=0:1:5
+Physical Disk 0:1:5 on Controller PERC H755 Front (Embedded)
+
+Controller PERC H755 Front (Embedded)
+ID                              : 0:1:5
+Status                          : Ok
+Name                            : Physical Disk 0:1:5
+State                           : Ready
+Power Status                    : Not Applicable
+Bus Protocol                    : SATA
+Media                           : SSD
+Part of Cache Pool              : Not Applicable
+Remaining Rated Write Endurance : 100%
+Failure Predicted               : No
+Revision                        : XCV1DL69
+Driver Version                  : Not Applicable
+Model Number                    : Not Applicable
+T10 PI Capable                  : No
+Certified                       : Yes
+Encryption Capable              : No
+Encryption Protocol             : Not Applicable
+Encrypted                       : Not Applicable
+Progress                        : Not Applicable
+Mirror Set ID                   : Not Applicable
+Capacity                        : 1,787.88 GiB (1919716163584 bytes)
+Used RAID Disk Space            : 0.00 GiB (0 bytes)
+Available RAID Disk Space       : 1,787.88 GiB (1919716163584 bytes)
+Hot Spare                       : No
+Vendor ID                       : DELL(tm)
+Product ID                      : SSDSC2KG019T8R
+Serial No.                      : PHYG216601GR1P9DGN
+Part Number                     : TW055J8HPIHIT24R04KZA04
+Negotiated Speed                : 6.00 Gbps
+Capable Speed                   : 6.00 Gbps
+PCIe Negotiated Link Width      : Not Applicable
+PCIe Maximum Link Width         : Not Applicable
+Logical Block size              : 512B
+Device Write Cache              : Not Applicable
+Manufacture Day                 : Not Available
+Manufacture Week                : Not Available
+Manufacture Year                : Not Available
+SAS Address                     : 0x500056B3A4002FC5
+WWN                             : 0x500056B3A4002FC5
+Non-RAID HDD Disk Cache Policy  : Not Applicable
+Disk Cache Policy               : Not Applicable
+Sub Vendor                      : Not Available
+Cryptographic Erase Capable     : Yes
+
+```

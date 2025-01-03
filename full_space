@@ -1,0 +1,42 @@
+---
+## docker 
+
+
+root@thienln-test:~# df -h
+Filesystem      Size  Used Avail Use% Mounted on
+udev             32G     0   32G   0% /dev
+tmpfs           6.3G   12M  6.3G   1% /run
+/dev/sda2       439G  335G   82G  81% /
+tmpfs            32G     0   32G   0% /dev/shm
+tmpfs           5.0M     0  5.0M   0% /run/lock
+tmpfs            32G     0   32G   0% /sys/fs/cgroup
+
+root@thienln-test:~# du -sh /var/log/
+61G     /var/log/
+root@thienln-test:~# du -sh /var/lib/docker
+5.9G    /var/lib/docker
+root@thienln-test:~# du -sh /var/
+68G     /var/
+
+
+root@thienln-test:~# lsof / | grep delete
+tee       3546579            root    3w   REG    8,2        72372 14948226 /root/.bash_history (deleted)
+filebeat  3729239            root    5r   REG    8,2 260833962921  1838316 /var/log/swift/proxy.log.1 (deleted)
+
+
+
+root@thienln-test:# docker-compose restart
+
+
+root@thienln-test:# df -h
+Filesystem      Size  Used Avail Use% Mounted on
+udev             32G     0   32G   0% /dev
+tmpfs           6.3G   12M  6.3G   1% /run
+/dev/sda2       439G   93G  324G  23% /
+tmpfs            32G     0   32G   0% /dev/shm
+tmpfs           5.0M     0  5.0M   0% /run/lock
+tmpfs            32G     0   32G   0% /sys/fs/cgroup
+/dev/sda1       511M  6.1M  505M   2% /boot/efi
+
+------------
+

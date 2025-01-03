@@ -1,0 +1,806 @@
+
+# LAB : Compare nginx run with dpdk f-stack vs nginx run on OS kernel interface 
+
+## Hardware information
+Model: Lenovo SR650	
+Serial Number : J900DRMN	
+Console IP : 10.115.60.158
+Disk type: nvme	
+Location: 1AM08	U22	(LAB Campus)
+Switch ports: 1AM08-U33-P0, P1	ae23	2x25Gb, 
+Network config: NO LACP, access vlan 3107 each port
+
+OS information : Ubuntu 22.04.4 LTS
+
+
+
+## Install OS and check 
+root@LAB-F-STACK-199:~# dmidecode -t1
+# dmidecode 3.3
+Getting SMBIOS data from sysfs.
+SMBIOS 3.3.0 present.
+
+Handle 0x0001, DMI type 1, 27 bytes
+System Information
+        Manufacturer: Lenovo
+        Product Name: ThinkSystem SR650 V2
+        Version: 07
+        Serial Number: J900DRMN
+        UUID: a9f1c6ba-d844-11ed-926b-3a68dda2cd17
+        Wake-up Type: Power Switch
+        SKU Number: 7Z73CTO1WW
+        Family: ThinkSystem
+
+
+root@LAB-F-STACK-199:~# lsb_release -a
+No LSB modules are available.
+Distributor ID: Ubuntu
+Description:    Ubuntu 22.04.4 LTS
+Release:        22.04
+Codename:       jammy
+
+
+# network: no lacp , access vlan 3107
+root@LAB-F-STACK-199:~# cat /etc/netplan/00-installer-config.yaml
+# This is the network config written by 'subiquity'
+network:
+  ethernets:
+    ens9f0:
+      dhcp4: false
+    ens9f1:
+      dhcp4: false
+      addresses: [10.237.7.199/24]
+      routes:
+        - to: default
+          via: 10.237.7.254
+  version: 2
+
+root@LAB-F-STACK-199:~# ip a
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host
+       valid_lft forever preferred_lft forever
+3: ens9f1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP group default qlen 1000
+    link/ether ec:e7:a7:00:d3:55 brd ff:ff:ff:ff:ff:ff
+    altname enp23s0f1
+    inet 10.237.7.199/24 brd 10.237.7.255 scope global ens9f1
+       valid_lft forever preferred_lft forever
+    inet6 fe80::eee7:a7ff:fe00:d355/64 scope link
+       valid_lft forever preferred_lft forever
+
+
+
+
+
+cd /home/thienln/
+mkdir .ssh
+cat <<EOF >>.ssh/authorized_keys
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDViq5nRyUKAe6qKA4cBDdo4oNFtRf/hSiEkiQHYSBUYVR4RKD1SHZcnBFMZ9UBkdmqRLkC58nO8VukfkkMRgDxjGjYPjMq9CAYjusDNR6P/j/DdK5BLxaeaTMbyC1C7N+Pf254+EhN9NlWK/srzXLeNbQfGOPNmOqvCe6Q6kjZHRYBphmQ/3nPy9IW6Gr4vvXZe7sX1dXJNYucrfwg3tqEMOKwSazrdbTCqPu3bJuUAvmJdkrwz38w4nT5S9wYCt3Isbjnq+lmvOVazwx5F8N5xNwU7jNyB+IL2HStQNX4jXpbCD4rY3AnRIFqfwUgrCRyMXGxqrSsQfsUJW+p2i5l thienln@vng.com.vn
+EOF
+chmod 600 .ssh/authorized_keys
+chown -R thienln:thienln .ssh/
+
+
+root@ceph-admin:/opt/ansible-for-all-servers# ansible-playbook -i inventories.d/lab_hosts -u thienln -K --key-file /home/thienln/.ssh/id_rsa main-playbook.yaml --tags user --limit 10.237.7.199
+
+# clone F-Stack
+mkdir -p /data/f-stack
+git clone https://github.com/F-Stack/f-stack.git /data/f-stack
+
+cd /data/f-stack/
+git checkout master
+
+
+# Install libnuma-dev
+apt install libnuma-dev  # on Ubuntu
+
+
+# Install python and modules for running DPDK python scripts
+apt install python3-pip
+pip3 install pyelftools --upgrade
+
+cd f-stack
+# Compile DPDK
+cd dpdk/
+# re-enable kni now, to remove kni later
+# disable crypto/openssl for Redhat/Centos 7.x.
+apt install meson
+meson -Denable_kmods=true -Ddisable_libs=flow_classify -Ddisable_drivers=crypto/openssl build
+
+ninja -C build
+ninja -C build install
+
+# Set hugepage (Linux only)
+# single-node system
+echo 1024 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
+
+# or NUMA (Linux only)
+echo 1024 > /sys/devices/system/node/node0/hugepages/hugepages-2048kB/nr_hugepages
+echo 1024 > /sys/devices/system/node/node1/hugepages/hugepages-2048kB/nr_hugepages
+
+# Using Hugepage with the DPDK (Linux only)
+mkdir /mnt/huge
+mount -t hugetlbfs nodev /mnt/huge
+
+# Close ASLR; it is necessary in multiple process (Linux only)
+echo 0 > /proc/sys/kernel/randomize_va_space
+
+# Offload NIC
+# For Linux:
+modprobe uio
+insmod /data/f-stack/dpdk/build/kernel/linux/igb_uio/igb_uio.ko
+insmod /data/f-stack/dpdk/build/kernel/linux/kni/rte_kni.ko carrier=on # carrier=on is necessary, otherwise need to be up `veth0` via `echo 1 > /sys/class/net/veth0/carrier`
+/data/f-stack/dpdk//usertools/dpdk-devbind.py --status
+
+ifconfig ens9f0 down
+
+/data/f-stack/dpdk//usertools/dpdk-devbind.py --bind=igb_uio ens9f0
+
+
+
+
+root@LAB-F-STACK-199:~# dpdk-devbind --status
+
+Network devices using DPDK-compatible driver
+============================================
+0000:17:00.0 'Ethernet Controller E810-XXV for SFP 159b' drv=igb_uio unused=ice,vfio-pci
+
+Network devices using kernel driver
+===================================
+0000:17:00.1 'Ethernet Controller E810-XXV for SFP 159b' if=ens9f1 drv=ice unused=igb_uio,vfio-pci *Active*
+
+
+
+# On Ubuntu, use gawk instead of the default mawk.
+#sudo apt-get install gawk  # or execute `sudo update-alternatives --config awk` to choose gawk.
+
+# Install dependencies for F-Stack
+apt install gcc make libssl-dev                            # On ubuntu
+
+# Upgrade pkg-config while version < 0.28
+cd /data
+wget https://pkg-config.freedesktop.org/releases/pkg-config-0.29.2.tar.gz
+tar xzvf pkg-config-0.29.2.tar.gz
+cd pkg-config-0.29.2
+./configure --with-internal-glib
+make
+make install
+mv /usr/bin/pkg-config /usr/bin/pkg-config.bak
+ln -s /usr/local/bin/pkg-config /usr/bin/pkg-config
+
+# Compile F-Stack
+find /usr/local -type f -name '*.pc'
+=> /usr/local/lib/x86_64-linux-gnu/pkgconfig/libdpdk.pc
+    /usr/local/lib/x86_64-linux-gnu/pkgconfig/libdpdk-libs.pc
+
+export FF_PATH=/data/f-stack
+export PKG_CONFIG_PATH=/usr/local/lib/x86_64-linux-gnu/pkgconfig/:/usr/lib/pkgconfig
+cd /data/f-stack/lib/
+make    # On Linux
+
+
+# Install F-STACK
+# libfstack.a will be installed to /usr/local/lib
+# ff_*.h will be installed to /usr/local/include
+# start.sh will be installed to /usr/local/bin/ff_start
+# config.ini will be installed to /etc/f-stack.conf
+make install    # On Linux
+
+
+
+# 
+apt install libpcre3 libpcre3-dev
+cd /data/f-stack/app/nginx-1.25.2/
+bash ./configure --prefix=/usr/local/nginx_fstack --with-ff_module
+
+make
+make install
+cd ../..
+/usr/local/nginx_fstack/sbin/nginx
+
+
+#
+apt install autoconf
+cd app/redis-6.2.6/deps/jemalloc
+./autogen.sh 
+cd ../..
+make
+make install
+
+
+------
+
+cd /data/f-stack/app/nginx-1.25.2/
+./configure --prefix=/usr/local/nginx_fstack --with-ff_module --add-module=/opt/nginx-module-vts
+make
+make install
+
+
+# run nginx
+nginx -t  
+nginx
+
+
+# config 
+/usr/local/nginx_fstack/conf/f-stack.conf
+...
+[port0]
+addr=10.237.7.200
+netmask=255.255.255.0
+broadcast=10.237.7.255
+gateway=10.237.7.1
+...
+
+
+/usr/local/nginx_fstack/conf/nginx.conf 
+...
+server {
+        listen       80;
+        server_name  fstack.vngcloud.vn;
+
+...
+
+
+# 
+/usr/local/nginx_fstack/sbin/nginx -t 
+/usr/local/nginx_fstack/sbin/nginx -s reload
+
+
+#check nginx
+ps aux | grep nginx 
+telnet 10.237.7.200 80 
+
+curl http://fstack.vngcloud.vn 
+<title>Welcome to F-Stack Nginx!</title>
+ pad data:0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789
+
+
+
+--- install normal nginx ---
+cd /opt/
+wget https://github.com/cubicdaiya/nginx-build/releases/download/v0.11.11/nginx-build-linux-amd64-0.11.11.tar.gz
+tar -xzvf nginx-build-linux-amd64-0.11.11.tar.gz
+cp nginx-build /usr/local/bin/
+nginx-build --version
+
+
+nginx-build -d /usr/local/bin/work \
+    -v 1.26.2 -openssl -zlib \
+    -patch-opt '-p1' \
+    --prefix=/etc/nginx --sbin-path=/usr/sbin/nginx \
+    --user=www-data --group=www-data \
+    --with-compat \
+    --with-file-aio --with-threads \
+    --conf-path=/etc/nginx/nginx.conf \
+    --error-log-path=/var/log/nginx/error.log \
+    --pid-path=/run/nginx.pid \
+    --lock-path=/var/lock/nginx.lock \
+    --http-log-path=/var/log/nginx/access.log \
+    --http-client-body-temp-path=/var/lib/nginx/body \
+    --http-proxy-temp-path=/var/lib/nginx/proxy \
+    --with-http_stub_status_module \
+    --http-fastcgi-temp-path=/var/lib/nginx/fastcgi \
+    --with-debug \
+    --with-http_gzip_static_module \
+    --with-http_v2_module \
+    --with-http_ssl_module \
+    --with-pcre-jit \
+    --with-http_realip_module \
+    --with-http_stub_status_module \
+    --with-http_sub_module \
+    --with-ld-opt="-Wl,-rpath,/usr/local/lib"
+
+   $ cd /usr/local/bin/work/nginx/1.26.2/nginx-1.26.2
+   $ sudo make install
+
+/usr/sbin/nginx -v
+nginx version: nginx/1.26.2
+
+
+## nginx config 
+/etc/nginx/nginx.conf
+...
+server {
+        listen       8080;
+        server_name  nginx.vngcloud.vn;
+...
+
+/etc/hosts
+...
+10.237.7.200 fstack.vngcloud.vn
+10.237.7.199 nginx.vngcloud.vn
+...
+
+## run nginx 
+/usr/sbin/nginx
+
+## test
+unset http_proxy
+unset https_proxy 
+
+curl http://nginx.vngcloud.vn:8080
+```
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+<style>
+html { color-scheme: light dark; }
+body { width: 35em; margin: 0 auto;
+font-family: Tahoma, Verdana, Arial, sans-serif; }
+</style>
+</head>
+<body>
+<h1>Welcome to nginx!</h1>
+<p>If you see this page, the nginx web server is successfully installed and
+working. Further configuration is required.</p>
+
+<p>For online documentation and support please refer to
+<a href="http://nginx.org/">nginx.org</a>.<br/>
+Commercial support is available at
+<a href="http://nginx.com/">nginx.com</a>.</p>
+
+<p><em>Thank you for using nginx.</em></p>
+</body>
+</html>
+```
+
+
+------------------ run benchmark and compare --------------
+cd /opt
+git clone https://github.com/wg/wrk.git
+cd wrk
+make
+make install 
+
+## default option
+cd /opt/wrk 
+root@LAB-F-STACK-199:/opt/wrk# ./wrk http://fstack.vngcloud.vn
+Running 10s test @ http://fstack.vngcloud.vn
+  2 threads and 10 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    96.21us   16.80us 348.00us   74.80%
+    Req/Sec    49.44k   762.09    50.33k    78.22%
+  993313 requests in 10.10s, 724.68MB read
+Requests/sec:  98352.82
+Transfer/sec:     71.75MB
+
+
+
+root@LAB-F-STACK-199:/opt/wrk# ./wrk http://nginx.vngcloud.vn:8080
+Running 10s test @ http://nginx.vngcloud.vn:8080
+  2 threads and 10 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   126.11us   11.61us 710.00us   98.58%
+    Req/Sec    39.66k   236.41    40.28k    62.38%
+  797407 requests in 10.10s, 648.67MB read
+Requests/sec:  78952.28
+Transfer/sec:     64.23MB
+
+
+
+root@LAB-F-STACK-199:/opt/wrk# ./wrk -c 10 -d 30s -t 10 http://fstack.vngcloud.vn
+Running 30s test @ http://fstack.vngcloud.vn
+  10 threads and 10 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   101.46us   18.06us 448.00us   72.35%
+    Req/Sec     9.82k   428.69    10.07k    91.10%
+  2941293 requests in 30.10s, 2.10GB read
+Requests/sec:  97719.09
+Transfer/sec:     71.29MB
+root@LAB-F-STACK-199:/opt/wrk# ./wrk -c 10 -d 30s -t 10 http://nginx.vngcloud.vn:8080
+Running 30s test @ http://nginx.vngcloud.vn:8080
+  10 threads and 10 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   128.03us   11.72us 776.00us   98.50%
+    Req/Sec     7.82k    53.64     7.98k    68.34%
+  2341015 requests in 30.10s, 1.86GB read
+Requests/sec:  77775.89
+Transfer/sec:     63.27MB
+
+
+
+----
+
+root@LAB-F-STACK-199:/opt/wrk# ./wrk -c 100 -d 30s -t 100 http://fstack.vngcloud.vn
+Running 30s test @ http://fstack.vngcloud.vn
+  100 threads and 100 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   278.72us   32.49us 728.00us   86.73%
+    Req/Sec     3.59k   237.44     4.16k    81.37%
+  10753732 requests in 30.10s, 7.66GB read
+Requests/sec: 357274.78
+Transfer/sec:    260.65MB
+root@LAB-F-STACK-199:/opt/wrk# ./wrk -c 100 -d 30s -t 100 http://nginx.vngcloud.vn:8080
+Running 30s test @ http://nginx.vngcloud.vn:8080
+  100 threads and 100 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     1.28ms  615.06us  54.90ms   99.69%
+    Req/Sec   794.64     28.69     4.22k    99.15%
+  2373248 requests in 30.02s, 1.89GB read
+Requests/sec:  79049.40
+Transfer/sec:     64.31MB
+
+
+
+-------
+
+
+root@LAB-F-STACK-199:/opt/wrk# ./wrk -c 1 -d 60s -t 1 http://fstack.vngcloud.vn
+Running 1m test @ http://fstack.vngcloud.vn
+  1 threads and 1 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   100.15us   14.77us 300.00us   81.18%
+    Req/Sec     9.97k   214.29    10.06k    94.34%
+  596123 requests in 1.00m, 434.91MB read
+Requests/sec:   9918.98
+Transfer/sec:      7.24MB
+
+root@LAB-F-STACK-199:/opt/wrk# ./wrk -c 10 -d 60s -t 1 http://fstack.vngcloud.vn
+Running 1m test @ http://fstack.vngcloud.vn
+  1 threads and 10 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    90.34us   18.02us 425.00us   71.78%
+    Req/Sec    99.02k     1.33k  100.68k    80.03%
+  5921155 requests in 1.00m, 4.22GB read
+Requests/sec:  98522.62
+Transfer/sec:     71.88MB
+
+
+root@LAB-F-STACK-199:/opt/wrk# ./wrk -c 100 -d 60s -t 1 http://fstack.vngcloud.vn
+Running 1m test @ http://fstack.vngcloud.vn
+  1 threads and 100 connections
+
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   276.60us  100.51us 810.00us   77.91%
+    Req/Sec   206.16k     1.35k  209.09k    63.17%
+  12309333 requests in 1.00m, 8.77GB read
+Requests/sec: 205153.81
+Transfer/sec:    149.67MB
+
+
+root@LAB-F-STACK-199:/opt/wrk# ./wrk -c 1000 -d 60s -t 1 http://fstack.vngcloud.vn
+Running 1m test @ http://fstack.vngcloud.vn
+  1 threads and 1000 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     2.38ms    1.36ms 212.46ms   99.80%
+    Req/Sec   212.58k     3.75k  218.99k    83.87%
+  12697797 requests in 1.00m, 9.05GB read
+Requests/sec: 211406.99
+Transfer/sec:    154.23MB
+
+
+root@LAB-F-STACK-199:/opt/wrk# ./wrk -c 5000 -d 60s -t 1 http://fstack.vngcloud.vn
+Running 1m test @ http://fstack.vngcloud.vn
+  1 threads and 5000 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     2.43ms    1.14ms 211.17ms   99.82%
+    Req/Sec   212.46k     3.43k  216.89k    91.76%
+  12678806 requests in 1.00m, 9.03GB read
+  Socket errors: connect 3980, read 0, write 0, timeout 0
+Requests/sec: 211193.81
+Transfer/sec:    154.08MB
+
+
+
+
+
+
+root@LAB-F-STACK-199:/opt/wrk# ./wrk -c 1 -d 60s -t 1 http://nginx.vngcloud.vn:8080
+Running 1m test @ http://nginx.vngcloud.vn:8080
+  1 threads and 1 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    23.42us  204.98us  17.05ms   99.95%
+    Req/Sec    50.39k   543.49    51.29k    90.68%
+  3014100 requests in 1.00m, 2.39GB read
+Requests/sec:  50151.95
+Transfer/sec:     40.80MB
+
+root@LAB-F-STACK-199:/opt/wrk# ./wrk -c 10 -d 60s -t 1 http://nginx.vngcloud.vn:8080
+Running 1m test @ http://nginx.vngcloud.vn:8080
+  1 threads and 10 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   130.28us  211.33us  20.08ms   99.92%
+    Req/Sec    78.81k     0.94k   80.21k    89.52%
+  4714352 requests in 1.00m, 3.75GB read
+Requests/sec:  78442.10
+Transfer/sec:     63.81MB
+
+
+root@LAB-F-STACK-199:/opt/wrk# ./wrk -c 100 -d 60s -t 1 http://nginx.vngcloud.vn:8080
+Running 1m test @ http://nginx.vngcloud.vn:8080
+  1 threads and 100 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     1.25ms  470.11us  47.36ms   99.75%
+    Req/Sec    80.75k   619.57    81.97k    64.33%
+  4820862 requests in 1.00m, 3.83GB read
+Requests/sec:  80346.66
+Transfer/sec:     65.36MB
+
+
+root@LAB-F-STACK-199:/opt/wrk# ./wrk -c 1000 -d 60s -t 1 http://nginx.vngcloud.vn:8080
+Running 1m test @ http://nginx.vngcloud.vn:8080
+  1 threads and 1000 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    22.49ms   52.93ms   1.01s    95.38%
+    Req/Sec    80.79k   622.17    82.20k    69.50%
+  4823267 requests in 1.00m, 3.83GB read
+  Socket errors: connect 0, read 7840, write 0, timeout 0
+Requests/sec:  80318.56
+Transfer/sec:     65.34MB
+
+root@LAB-F-STACK-199:/opt/wrk# ./wrk -c 5000 -d 60s -t 1 http://nginx.vngcloud.vn:8080
+Running 1m test @ http://nginx.vngcloud.vn:8080
+  1 threads and 5000 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    16.27ms   40.55ms   1.24s    98.53%
+    Req/Sec    79.63k   591.67    81.20k    69.17%
+  4755117 requests in 1.00m, 3.78GB read
+  Socket errors: connect 3980, read 7744, write 0, timeout 0
+Requests/sec:  79173.82
+Transfer/sec:     64.41MB
+
+
+---- test 2 ---
+duration 60s, 10 threads
+
+
+
+./wrk -c 5 -d 60s -t 5 http://fstack.vngcloud.vn
+./wrk -c 10 -d 60s -t 5 http://fstack.vngcloud.vn
+./wrk -c 100 -d 60s -t 5 http://fstack.vngcloud.vn
+./wrk -c 1000 -d 60s -t 5 http://fstack.vngcloud.vn
+./wrk -c 5000 -d 60s -t 5 http://fstack.vngcloud.vn
+
+Running 1m test @ http://fstack.vngcloud.vn
+  5 threads and 5 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   101.54us   18.89us 380.00us   71.61%
+    Req/Sec     9.82k   452.95    10.07k    91.55%
+  2934433 requests in 1.00m, 2.09GB read
+Requests/sec:  48826.21
+Transfer/sec:     35.62MB
+Running 1m test @ http://fstack.vngcloud.vn
+  5 threads and 10 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   100.13us   17.94us 415.00us   73.03%
+    Req/Sec    19.69k   558.05    20.13k    89.52%
+  5888125 requests in 1.00m, 4.20GB read
+Requests/sec:  97972.29
+Transfer/sec:     71.48MB
+Running 1m test @ http://fstack.vngcloud.vn
+  5 threads and 100 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   263.17us   29.40us 836.00us   84.37%
+    Req/Sec    74.04k     2.89k   81.09k    73.18%
+  22136908 requests in 1.00m, 15.77GB read
+Requests/sec: 368335.28
+Transfer/sec:    268.72MB
+Running 1m test @ http://fstack.vngcloud.vn
+  5 threads and 1000 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    82.45ms  197.42ms   1.70s    91.64%
+    Req/Sec    65.84k     8.99k  112.08k    68.93%
+  19651988 requests in 1.00m, 14.00GB read
+  Socket errors: connect 0, read 0, write 0, timeout 720
+Requests/sec: 327274.28
+Transfer/sec:    238.76MB
+
+root@LAB-F-STACK-199:/opt/wrk# ./wrk -c 5000 -d 60s -t 5 http://fstack.vngcloud.vn
+Running 1m test @ http://fstack.vngcloud.vn
+  5 threads and 5000 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    24.10ms  107.16ms   1.70s    94.22%
+    Req/Sec    67.09k    13.65k  114.82k    66.27%
+  20021960 requests in 1.00m, 14.26GB read
+  Socket errors: connect 3984, read 0, write 0, timeout 585
+Requests/sec: 333483.66
+Transfer/sec:    243.30MB
+
+
+#d60t5-default
+./wrk -c 5 -d 60s -t 5      http://nginx.vngcloud.vn:8080
+./wrk -c 10 -d 60s -t 5     http://nginx.vngcloud.vn:8080
+./wrk -c 100 -d 60s -t 5    http://nginx.vngcloud.vn:8080
+./wrk -c 1000 -d 60s -t 5   http://nginx.vngcloud.vn:8080
+./wrk -c 5000 -d 60s -t 5   http://nginx.vngcloud.vn:8080
+
+Running 1m test @ http://nginx.vngcloud.vn:8080
+  5 threads and 5 connections
+
+
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    64.17us    9.25us   0.94ms   98.78%
+    Req/Sec    15.56k   127.31    15.88k    78.60%
+  4652815 requests in 1.00m, 3.70GB read
+Requests/sec:  77418.61
+Transfer/sec:     62.98MB
+Running 1m test @ http://nginx.vngcloud.vn:8080
+  5 threads and 10 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   126.77us   12.23us   1.49ms   98.72%
+    Req/Sec    15.79k   102.24    16.08k    64.26%
+  4720607 requests in 1.00m, 3.75GB read
+Requests/sec:  78546.95
+Transfer/sec:     63.90MB
+Running 1m test @ http://nginx.vngcloud.vn:8080
+  5 threads and 100 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     1.29ms  472.42us  52.72ms   99.57%
+    Req/Sec    15.74k   399.61    26.18k    98.40%
+  4702449 requests in 1.00m, 3.74GB read
+Requests/sec:  78243.64
+Transfer/sec:     63.65MB
+Running 1m test @ http://nginx.vngcloud.vn:8080
+  5 threads and 1000 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    23.59ms   59.16ms   1.34s    95.36%
+    Req/Sec    15.96k   307.11    18.10k    72.97%
+  4765060 requests in 1.00m, 3.79GB read
+  Socket errors: connect 0, read 7488, write 0, timeout 0
+Requests/sec:  79360.13
+Transfer/sec:     64.56MB
+Running 1m test @ http://nginx.vngcloud.vn:8080
+  5 threads and 5000 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    15.99ms   39.46ms   1.46s    98.58%
+    Req/Sec    15.93k     2.26k   20.00k    60.10%
+  4755559 requests in 1.00m, 3.78GB read
+  Socket errors: connect 3984, read 7616, write 0, timeout 0
+Requests/sec:  79197.28
+Transfer/sec:     64.43MB
+
+
+------ Drv : vfio-pci ----
+
+Stop nginx fstack
+
+nginx -s stop
+
+
+root@LAB-F-STACK-199:/opt/wrk# dpdk-devbind --status
+
+Network devices using DPDK-compatible driver
+============================================
+0000:17:00.0 'Ethernet Controller E810-XXV for SFP 159b' drv=igb_uio unused=ice,vfio-pci
+
+Network devices using kernel driver
+===================================
+0000:17:00.1 'Ethernet Controller E810-XXV for SFP 159b' if=ens9f1 drv=ice unused=igb_uio,vfio-pci *Active*
+
+
+## unbind 0000:17:00.0
+
+dpdk-devbind --unbind 0000:17:00.0
+
+root@LAB-F-STACK-199:/opt/wrk# dpdk-devbind --status
+
+Network devices using kernel driver
+===================================
+0000:17:00.1 'Ethernet Controller E810-XXV for SFP 159b' if=ens9f1 drv=ice unused=igb_uio,vfio-pci *Active*
+
+Other Network devices
+=====================
+0000:17:00.0 'Ethernet Controller E810-XXV for SFP 159b' unused=ice,igb_uio,vfio-pci
+
+
+modprobe vfio-pci
+
+dpdk-devbind -b vfio-pci 0000:17:00.0 
+
+
+
+root@LAB-F-STACK-199:/usr/local/nginx_fstack/conf# dpdk-devbind --status
+
+Network devices using DPDK-compatible driver
+============================================
+0000:17:00.0 'Ethernet Controller E810-XXV for SFP 159b' drv=vfio-pci unused=ice
+
+Network devices using kernel driver
+===================================
+0000:17:00.1 'Ethernet Controller E810-XXV for SFP 159b' if=ens9f1 drv=ice unused=vfio-pci *Active*
+
+
+./wrk -c 1 -d 60s -t 1 http://fstack.vngcloud.vn
+./wrk -c 10 -d 60s -t 1 http://fstack.vngcloud.vn
+./wrk -c 100 -d 60s -t 1 http://fstack.vngcloud.vn
+./wrk -c 1000 -d 60s -t 1 http://fstack.vngcloud.vn
+./wrk -c 5000 -d 60s -t 1 http://fstack.vngcloud.vn
+
+Running 1m test @ http://fstack.vngcloud.vn
+  1 threads and 1 connections
+
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    99.88us   13.86us 296.00us   82.41%
+    Req/Sec     9.99k   172.00    10.07k    95.01%
+  597035 requests in 1.00m, 435.57MB read
+Requests/sec:   9934.12
+Transfer/sec:      7.25MB
+Running 1m test @ http://fstack.vngcloud.vn
+  1 threads and 10 connections
+
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    88.76us   19.43us 553.00us   73.01%
+    Req/Sec    98.98k     1.17k  100.67k    74.38%
+  5918616 requests in 1.00m, 4.22GB read
+Requests/sec:  98480.61
+Transfer/sec:     71.85MB
+Running 1m test @ http://fstack.vngcloud.vn
+  1 threads and 100 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   308.12us  111.14us   1.00ms   78.39%
+    Req/Sec   184.07k     1.22k  187.15k    67.83%
+  10987580 requests in 1.00m, 7.83GB read
+Requests/sec: 183125.13
+Transfer/sec:    133.60MB
+Running 1m test @ http://fstack.vngcloud.vn
+  1 threads and 1000 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     2.69ms    1.93ms 214.07ms   99.65%
+    Req/Sec   188.81k     3.21k  195.23k    87.90%
+  11271840 requests in 1.00m, 8.03GB read
+Requests/sec: 187717.02
+Transfer/sec:    136.95MB
+Running 1m test @ http://fstack.vngcloud.vn
+  1 threads and 5000 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     2.80ms    2.59ms 213.29ms   99.73%
+    Req/Sec   186.11k     3.53k  191.81k    80.03%
+  11113717 requests in 1.00m, 7.92GB read
+  Socket errors: connect 3980, read 0, write 0, timeout 0
+Requests/sec: 185019.07
+Transfer/sec:    134.98MB
+
+
+./wrk -c 5 -d 60s -t 5 http://fstack.vngcloud.vn
+./wrk -c 10 -d 60s -t 5 http://fstack.vngcloud.vn
+./wrk -c 100 -d 60s -t 5 http://fstack.vngcloud.vn
+./wrk -c 1000 -d 60s -t 5 http://fstack.vngcloud.vn
+./wrk -c 5000 -d 60s -t 5 http://fstack.vngcloud.vn
+
+Running 1m test @ http://fstack.vngcloud.vn
+  5 threads and 5 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   101.45us   18.63us 572.00us   71.78%
+    Req/Sec     9.83k   426.63    10.07k    91.78%
+  2937394 requests in 1.00m, 2.09GB read
+Requests/sec:  48875.23
+Transfer/sec:     35.66MB
+Running 1m test @ http://fstack.vngcloud.vn
+  5 threads and 10 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    99.82us   17.88us 644.00us   73.06%
+    Req/Sec    19.68k   482.56    20.13k    90.65%
+  5892833 requests in 1.00m, 4.20GB read
+Requests/sec:  98050.49
+Transfer/sec:     71.53MB
+Running 1m test @ http://fstack.vngcloud.vn
+  5 threads and 100 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   359.29us   37.98us   1.07ms   84.19%
+    Req/Sec    54.52k     1.78k   59.44k    67.22%
+  16299431 requests in 1.00m, 11.61GB read
+Requests/sec: 271205.26
+Transfer/sec:    197.86MB
+Running 1m test @ http://fstack.vngcloud.vn
+  5 threads and 1000 connections
+
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    84.80ms  203.69ms   1.70s    91.40%
+    Req/Sec    51.15k     7.86k   96.84k    70.03%
+  15268563 requests in 1.00m, 10.88GB read
+  Socket errors: connect 0, read 0, write 0, timeout 943
+Requests/sec: 254329.34
+Transfer/sec:    185.55MB
+Running 1m test @ http://fstack.vngcloud.vn
+  5 threads and 5000 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    26.54ms  120.20ms   1.70s    94.64%
+    Req/Sec    50.29k    10.05k   88.38k    68.30%
+  15009728 requests in 1.00m, 10.69GB read
+  Socket errors: connect 3984, read 0, write 0, timeout 1065
+Requests/sec: 249958.75
+Transfer/sec:    182.36MB
+
