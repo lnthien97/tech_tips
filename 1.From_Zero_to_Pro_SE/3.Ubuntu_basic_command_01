@@ -1,0 +1,71 @@
+Một số command giúp bạn làm quen với ubuntu OS, gõ đi và xem output cho vui, chỉ tốn vài phút thôi. 
+Dưới đây là top 10 command hay sử dụng nhất, nó khá đơn giản nên chắc khong cần giải thích nhiều.
+
+# liệt kê danh sách file và thư mục hiện tại 
+ls 
+ls -l
+ls -a 
+ls -h 
+ls -lah 
+
+ls /
+ls -l /
+ls -lah /
+
+# Thay đổi thư mục (di chuyển đến thư mục khác)
+cd 
+cd / 
+cd /home/ 
+cd /etc/
+cd ..
+cd /opt/ 
+
+
+# Hiển thị vị trí thư mục hiện tại 
+pwd 
+
+# Tạo file 
+touch file01
+touch file02 
+touch abc 
+(ls để kiểm tra danh sách file nhé)
+
+# copy file 
+cp file01 xyz 
+cp file02 aaa 
+
+# Xoá file 
+rm xyz
+rm aaa 
+
+
+# Thay đổi tên file 
+mv file_before file_after
+mv file01 file04
+
+# Tạo thư mục (make directory )
+mkdir dir01 
+mkdir dir02 
+
+# Update danh sách các phần mềm của hệ thống 
+sudo apt update 
+
+# Chỉnh sửa file 
+vi file01 
+
+gõ i để edit 
+edit file, dùng các phím mũi tên để di chuyển con trỏ soạn thảo
+sau khi edit xong gõ esc để thoát khỏi edit mode 
+gõ :w + enter để lưu file 
+gõ :q + enter để thoát 
+
+# Show nội dung file 
+cat file01 
+
+! Để biết thêm chi tiết các option của từng command 
+man <command>
+
+man ls 
+man vi 
+man cat 
+

@@ -1,0 +1,68 @@
+Cách kiểm tra băng thông (bandwidth) giữa 2 host bằng iperf3 
+
+#### Cài đặt trên Ubuntu 22.04
+```
+sudo apt install iperf3 -y
+```
+
+#### Cách test cơ bản 
+Trên host đầu tiên (10.10.10.205) ta chạy mode server 
+```
+iperf3 -s
+```
+
+Trên host thứ 2 (10.10.10.204) ta chạy mode client kết nối đến host server 
+```
+iperf3 -c 10.10.10.205
+```
+
+Kết quả thu được trên 2 host 
+```
+root@testing-server-205:~# iperf3 -s
+-----------------------------------------------------------
+Server listening on 5201
+-----------------------------------------------------------
+Accepted connection from 10.10.10.204, port 35070
+[  5] local 10.10.10.205 port 5201 connected to 10.10.10.204 port 35072
+[ ID] Interval           Transfer     Bitrate
+[  5]   0.00-1.00   sec  2.74 GBytes  23.6 Gbits/sec
+[  5]   1.00-2.00   sec  2.76 GBytes  23.7 Gbits/sec
+[  5]   2.00-3.00   sec  2.76 GBytes  23.7 Gbits/sec
+[  5]   3.00-4.00   sec  2.76 GBytes  23.7 Gbits/sec
+[  5]   4.00-5.00   sec  2.76 GBytes  23.7 Gbits/sec
+[  5]   5.00-6.00   sec  2.76 GBytes  23.7 Gbits/sec
+[  5]   6.00-7.00   sec  2.76 GBytes  23.7 Gbits/sec
+[  5]   7.00-8.00   sec  2.76 GBytes  23.7 Gbits/sec
+[  5]   8.00-9.00   sec  2.76 GBytes  23.7 Gbits/sec
+[  5]   9.00-10.00  sec  2.76 GBytes  23.7 Gbits/sec
+[  5]  10.00-10.00  sec   938 KBytes  23.3 Gbits/sec
+- - - - - - - - - - - - - - - - - - - - - - - - -
+[ ID] Interval           Transfer     Bitrate
+[  5]   0.00-10.00  sec  27.6 GBytes  23.7 Gbits/sec                  receiver
+
+root@testing-server-204:~# iperf3 -c 10.10.10.205
+Connecting to host 10.10.10.205, port 5201
+[  5] local 10.10.10.204 port 35072 connected to 10.10.10.205 port 5201
+[ ID] Interval           Transfer     Bitrate         Retr  Cwnd
+[  5]   0.00-1.00   sec  2.76 GBytes  23.7 Gbits/sec    0   3.08 MBytes
+[  5]   1.00-2.00   sec  2.76 GBytes  23.7 Gbits/sec    0   3.40 MBytes
+[  5]   2.00-3.00   sec  2.76 GBytes  23.7 Gbits/sec    0   3.62 MBytes
+[  5]   3.00-4.00   sec  2.76 GBytes  23.7 Gbits/sec    0   3.62 MBytes
+[  5]   4.00-5.00   sec  2.76 GBytes  23.7 Gbits/sec    0   3.62 MBytes
+[  5]   5.00-6.00   sec  2.76 GBytes  23.7 Gbits/sec    0   3.81 MBytes
+[  5]   6.00-7.00   sec  2.76 GBytes  23.7 Gbits/sec    0   3.81 MBytes
+[  5]   7.00-8.00   sec  2.76 GBytes  23.7 Gbits/sec    0   3.81 MBytes
+[  5]   8.00-9.00   sec  2.76 GBytes  23.7 Gbits/sec    0   3.81 MBytes
+[  5]   9.00-10.00  sec  2.76 GBytes  23.7 Gbits/sec    0   4.05 MBytes
+- - - - - - - - - - - - - - - - - - - - - - - - -
+[ ID] Interval           Transfer     Bitrate         Retr
+[  5]   0.00-10.00  sec  27.6 GBytes  23.7 Gbits/sec    0             sender
+[  5]   0.00-10.00  sec  27.6 GBytes  23.7 Gbits/sec                  receiver
+
+iperf Done.
+```
+
+#### Chỉ định port listening cụ thể trên host server 
+```
+iperf3 -s -p 7575
+```

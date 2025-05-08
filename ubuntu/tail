@@ -1,0 +1,11 @@
+# tail cheat sheet 
+
+watch log
+    tail -f file.log 
+
+tail 100 lines of log 
+    tail -100 file.log 
+
+watch specific string 
+    tail -f file.log | grep "string"
+

@@ -1,0 +1,124 @@
+
+
+## Install swiftclient
+
+apt update
+apt install python3-swiftclient # install `swift`
+
+# 
+swift -h # for more help 
+
+Positional arguments:
+  <subcommand>
+    delete               Delete a container or objects within a container.
+    download             Download objects from containers.
+    list                 Lists the containers for the account or the objects
+                         for a container.
+    post                 Updates meta information for the account, container,
+                         or object; creates containers if not present.
+    copy                 Copies object, optionally adds meta
+    stat                 Displays information for the account, container,
+                         or object.
+    upload               Uploads files or directories to the given container.
+    capabilities         List cluster capabilities.
+    tempurl              Create a temporary URL.
+    auth                 Display auth related environment variables.
+    bash_completion      Outputs option and flag cli data ready for
+                         bash_completion.
+
+
+----------------------
+
+###  Administrator command 
+
+swift auth          # get token, storage url 
+-> output   export OS_STORAGE_URL=http://10.237.7.181:8080/v1/AUTH_45c03018fff04e139f1f56dbac62b794
+            export OS_AUTH_TOKEN=gAAAAABoHAF4uxLZMNmsuioDrMNotG63xR1CrzpWh1DEWiOJqzL-03nxQ-MBdDLVzH8odLsQBx9lshilOI5QEFxeQ1ojqZrbWMZnssFEY7pmjetayLHI0vzUJ1Jq3u7qfONwkMmOKOO7PN3WB1FlLz69s_xpkMbMD--qfX3qGaDitWdhGWGHAJ0
+
+swift auth --debug  # get more detail (curl command)
+
+## Cheat by using admin (ResellerAdmin) token. You can access any account with ResellerAdmin token 
+source admin.rc  # export all credential variables
+
+ export OS_USERNAME=admin
+ export OS_PASSWORD=83c0cadd9c3dbce7eeec3e527b4dec02
+ export OS_PROJECT_NAME=admin
+ export OS_USER_DOMAIN_NAME=default
+ export OS_PROJECT_DOMAIN_NAME=default
+ export OS_AUTH_URL=http://10.237.7.180:5000/v3
+ export OS_IDENTITY_API_VERSION=3
+
+# export admin|super user| token 
+export OS_AUTH_TOKEN=gAAAAABoGzUgqs-oEJGg5Z5obT0_vgw8ONfWcZbyWulPCpnvLazUs2lV9Uje60-M0h5ZBRFvEf0jEnsLIqIGewtvz32gBYhae0404mz1Wv5rbkMcD1i654UPKp3dkXTx72BU1bE_Uu_tkv5B2SK1VgxbYX5kOlsgMzNhUjkqK_PdfHVmX2swaOo
+
+# export a project url 
+export OS_STORAGE_URL=http://10.237.7.181:8080/v1/AUTH_<project_id>
+
+## Check information account|container|object  (--debug to show more information)
+swift stat account [container] [object] [--debug]
+swift stat
+
+swift post # create account, update account's metadata 
+curl -X POST http://swift-proxy-server/v1/account_name -H "X-Auth-Token: $ResellerAdminToken" # create account 
+
+
+## container actions
+swift post abc # create container named 'abc'
+swift stat abc # check container abc information 
+
+swift list # list all containers in account 
+swift post abc -m "key01: value01"
+
+swift stat abc
+=> Meta Key01: value01
+
+# 
+swift upload container file # upload file 
+swift download container file  # download file 
+swift list container # list all file in container
+swift delete container file # delete file 
+swift delete container  # delete container
+
+
+---------- TEMPURL ----------
+# tempurl (public url in a period of time without authtoken )
+
+enable tempurl middleware in swift proxy config /etc/swift/proxy-server.conf 
+  [pipeline:main]
+  ... tempurl ...
+
+swift post -m "Temp-URL-Key:abcxyz"  # set Temp url key 
+swift stat  # get temp url key 
+...
+  Meta Temp-Url-Key: abcxyz
+
+swift tempurl --help 
+
+swift tempurl GET 3600 /v1/AUTH_45c03018fff04e139f1f56dbac62b794/abc/my_file abcxyz
+=> /v1/AUTH_45c03018fff04e139f1f56dbac62b794/abc/my_file?temp_url_sig=774f720e5136c496a7f584978df7918d41b8b332&temp_url_expires=1746672897
+
+# test download file using tempurl 
+wget http://10.237.7.181:8080/v1/AUTH_45c03018fff04e139f1f56dbac62b794/abc/my_file?temp_url_sig=774f720e5136c496a7f584978df7918d41b8b332&temp_url_expires=1746672897
+
+--------  OBJECT EXPIRATION -------
+swift post CONTAINER OBJECT_FILENAME -H "X-Delete-At:UNIX_TIME" # set expired time 
+swift post abc my_file -H "X-Delete-At:1749348521"  # example 
+swift stat abc my_file # verify  -> X-Delete-At: 1749348521 
+swift post CONTAINER OBJECT_FILENAME -H "X-Delete-After:SECONDS"   # delele object after amount of time (in seconds), UNIX_TIME =  now() + SECONDS 
+swift post abc file02 -H "X-Delete-After:3600"  # example 
+swift stat abc file02  # verify -> X-Delete-At: 1746674138   , with `date +%s` = 1746670618 
+
+# check hidden account .expiring_objects , when you set exprired to an object, that object information is written into this account. 
+source admin.rc 
+swift auth 
+export OS_AUTH_TOKEN=<ResellerAdminToken>
+export OS_STORAGE_URL=http://10.237.7.181:8080/v1/.expiring_objects  
+swift list  # show containers 
+  1746662361
+  1749340701
+swift list 1746662361 # list expiring objects 
+  1746674138-AUTH_45c03018fff04e139f1f56dbac62b794/abc/file02
+
+
+-------- OBJECT VERSIONING -------
+

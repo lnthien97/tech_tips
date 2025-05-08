@@ -1,0 +1,25 @@
+# vi/vim cheatsheet
+https://vim.rtorr.com/
+
+
+i : enter insert mode
+v : visual mode 
+esc : global mode 
+
+## global mode 
+dd : delete line 
+u : undo 
+H : move cursor to top
+G : move cursor to bottom
+/<string> : find string
+    n : next matched string
+    N : previous matched string
+
+:set number : show line number 
+:<number>  : go to line number
+
+## visual mode 
+
+to comment multiple lines
+v : visual mode -> up/down to select multiple lines -> :s/^ /# / + enter
+

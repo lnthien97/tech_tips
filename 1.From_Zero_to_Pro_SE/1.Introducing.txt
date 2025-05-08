@@ -1,0 +1,11 @@
+System Engineer IT kiếm cơm bằng cách nào ? 
+
+Chuỗi bài viết gốc được viết bằng Tiếng Việt do Lê Ngọc Thiên biên soạn vào những lúc rảnh rỗi, xong task của công ty, muốn cống hiến chút gì đó cho cộng đồng.
+Bị đứa em họ hỏi 'muốn làm được System Engineer như anh thì cần học gì?', không có câu trả lời ngắn gọn nào đủ để diễn tả hết nên tôi đành soạn ra vài bài viết để nếu 
+có bị ai đó hỏi tương tự, tôi sẽ quăng cái này vào mặt người đó.
+
+Tôi không giỏi lý thuyết, cũng chưa chắc đã hiểu đúng vấn đề, thay vào đó những bài viết sau đây chủ yếu là thực hành. Nếu bạn thắc mắc gì thì cứ hỏi chatgpt hoặc search trên google.
+
+Mục tiêu là hướng dẫn người không biết gì về IT có thể tiếp cận với System Engineer trong thời gian ngắn nhất. 
+
+

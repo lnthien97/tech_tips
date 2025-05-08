@@ -1,0 +1,18 @@
+# grep cheatsheet
+
+list all lines contain <string> in file
+    grep <string> file 
+
+ignore case of string
+    grep -i <string> file 
+
+single regex
+grep -e <string> file : single regex 
+    grep -e "^[0-4].* " file01 
+
+multi regex
+grep -E "PUT|GET|DELETE" file01 
+
+find string in all files of a directory
+    grep -rn /folder -ie "abd" 
+

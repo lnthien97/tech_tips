@@ -1,0 +1,14 @@
+Bạn cần cài phần mềm ảo hoá lên trên máy tính của bạn.
+
+Mục đích là để tạo ra các máy ảo khác nhau, vì trong những bài thực hành sẽ có những mô hình có nhiều máy tính kết nối với nhau. 
+
+Nếu máy tính của bạn đang OS (chạy hệ điều hành) Window, bạn có thể cài các phần mềm: 
+- VirtualBox
+- VMware
+
+Bài tập đầu tiên là :
+Cài đặt phần mềm ảo hoá trên máy tính của bạn,
+Lên trang chủ của ubuntu https://ubuntu.com/download/server , tải file iso về máy 
+Tạo một máy ảo từ file iso ubuntu vừa tải về. 
+
+Phần này trên Youtube hướng dẫn rất nhiều nên tôi sẽ bỏ qua. 
