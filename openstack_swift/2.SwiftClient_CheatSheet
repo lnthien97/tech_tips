@@ -122,3 +122,41 @@ swift list 1746662361 # list expiring objects
 
 -------- OBJECT VERSIONING -------
 
+If object versioning was enabled using X-History-Location, then object DELETE requests will copy the current version to the archive container then remove it from the versioned container.
+
+If object versioning was enabled using X-Versions-Location, then object DELETE requests will restore the most-recent version from the archive container, overwriting the current version.
+
+# enable version in proxy-server config 
+/etc/swift/proxy-server.conf 
+
+[pipeline:main]
+pipeline = catch_errors gatekeeper healthcheck proxy-logging cache listing_formats container_sync bulk tempurl ratelimit authtoken  keystoneauth  copy container-quotas account-quotas slo dlo versioned_writes symlink proxy-logging proxy-server
+...
+[filter:versioned_writes]
+use = egg:swift#versioned_writes
+allow_versioned_writes = true
+...
+
+# create 2 container 
+swift post container_01
+swift post container_02
+
+# set versioned container
+swift post container_01 -H "X-History-Location:container_02"
+
+# check 
+swift stat container_01
+               Account: AUTH_45c03018fff04e139f1f56dbac62b794
+             Container: container_01
+              ...
+    X-History-Location: container_02
+
+# 
+swift upload container_01 file02
+swift upload container_01 file02
+
+# verify
+swift list container_02
+006file02/1746757584.03598
+006file02/1746757808.11100
+
